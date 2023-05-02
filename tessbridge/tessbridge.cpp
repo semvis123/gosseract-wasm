@@ -218,6 +218,4 @@ const char *GetDataPath() {
   return api.GetDatapath();
 }
 
-bool FileExists(char *filepath) {
-  return std::filesystem::exists("./non-existing-file");
-}
+bool FileExists(char *filepath) { return (access(filepath, F_OK) == 0); }
