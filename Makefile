@@ -27,37 +27,22 @@ third_party/emsdk: third_party_versions.mk
 	cd $@ && git fetch origin $(EMSDK_COMMIT) && git checkout $(EMSDK_COMMIT)
 	touch $@
 
-build/emsdk.uptodate: third_party/emsdk | build
+build/emsdk.uptodate: third_party/emsdk
 	third_party/emsdk/emsdk install 3.1.35
 	third_party/emsdk/emsdk activate 3.1.35
-	rm -fr third_party/emsdk/upstream/emscripten
-	mkdir -p third_party/emsdk/upstream/emscripten
+	rm -Rf third_party/emsdk/upstream/emscripten
 	git clone $(EMSCRIPTEN_FORK) third_party/emsdk/upstream/emscripten
-	cd third_party/emsdk/upstream/emscripten && git checkout $(EMSCRIPTEN_BRANCH)
+	cd third_party/emsdk/upstream/emscripten/ && git checkout $(EMSCRIPTEN_BRANCH)
 	touch build/emsdk.uptodate
-
-# third_party/zlib: third_party_versions.mk build/emsdk.uptodate
-# 	mkdir -p third_party/zlib
-# 	test -d $@/.git || git clone --depth 1 https://github.com/emscripten-ports/zlib.git $@
-# 	cd $@ && git fetch origin $(ZLIB_COMMIT) && git checkout $(ZLIB_COMMIT)
-# 	touch $@
-#
-# build/zlib.uptodate: third_party/zlib | build
-# 	mkdir -p build/zlib
-# 	cd build/zlib && $(EMSDK_DIR)/emconfigure ../../third_party/zlib/configure
-# 	# cd build/zlib && $(EMSDK_DIR)/emcmake cmake -G Ninja ../../third_party/zlib -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR)
-# 	cd build/zlib && $(EMSDK_DIR)/emmake make build
-# 	# cd build/zlib && $(EMSDK_DIR)/emmake make install -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR)
-# 	# touch build/zlib.uptodate
 
 LEPTONICA_DEP_FLAGS=-s USE_ZLIB=1 -s USE_LIBPNG=1 -s USE_LIBJPEG=1
 LEPTONICA_FLAGS=-DCMAKE_INSTALL_PREFIX="$(INSTALL_DIR)" \
-	-DCMAKE_TOOLCHAIN_FILE="$(EMSDK_DIR)/cmake/Modules/Platform/Emscripten.cmake" \
-	-DCMAKE_CXX_FLAGS="$(LEPTONICA_DEP_FLAGS)" \
-	-DCMAKE_C_FLAGS="$(LEPTONICA_DEP_FLAGS)" \
-	-DCMAKE_EXE_LINKER_FLAGS=" $(LEPTONICA_DEP_FLAGS)"
+								-DCMAKE_TOOLCHAIN_FILE="$(EMSDK_DIR)/cmake/Modules/Platform/Emscripten.cmake" \
+								-DCMAKE_CXX_FLAGS="$(LEPTONICA_DEP_FLAGS)" \
+								-DCMAKE_C_FLAGS="$(LEPTONICA_DEP_FLAGS)" \
+								-DCMAKE_EXE_LINKER_FLAGS=" $(LEPTONICA_DEP_FLAGS)"
 
-third_party/leptonica: third_party_versions.mk 
+third_party/leptonica: third_party_versions.mk
 	mkdir -p third_party/leptonica
 	test -d $@/.git || git clone --depth 1 https://github.com/DanBloomberg/leptonica.git $@
 	cd $@ && git fetch origin $(LEPTONICA_COMMIT) && git checkout $(LEPTONICA_COMMIT)
@@ -95,17 +80,17 @@ TESSERACT_FLAGS=\
 								-DHAVE_FMA=OFF \
 								-DHAVE_SSE4_1=ON \
 								-DLeptonica_DIR=$(INSTALL_DIR)/lib/cmake/leptonica \
-								-DCMAKE_CXX_FLAGS="$(TESSERACT_DEFINES) -msimd128" \
+								-DCMAKE_CXX_FLAGS="$(TESSERACT_DEFINES) -msimd128 -s USE_ZLIB=1 -s USE_LIBPNG=1 -s USE_LIBJPEG=1" \
 								-DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR) \
-								-DCMAKE_TOOLCHAIN_FILE="$(EMSDK_DIR)/cmake/Modules/Platform/Emscripten.cmake"\
-								-DCMAKE_EXE_LINKER_FLAGS=" $(LEPTONICA_DEP_FLAGS)"
+								-DCMAKE_TOOLCHAIN_FILE="$(EMSDK_DIR)/cmake/Modules/Platform/Emscripten.cmake"
 
 # Compile flags for fallback Tesseract build. This is for browsers that don't
 # support WASM SIMD.
 TESSERACT_FALLBACK_FLAGS=$(TESSERACT_FLAGS) \
 												 -DHAVE_SSE4_1=OFF \
 												 -DCMAKE_INSTALL_PREFIX=$(FALLBACK_INSTALL_DIR) \
-												 -DCMAKE_CXX_FLAGS=$(TESSERACT_DEFINES)
+												 -DCMAKE_CXX_FLAGS=$(TESSERACT_DEFINES) -s USE_ZLIB=1 -s USE_LIBPNG=1 -s USE_LIBJPEG=1 \
+												 -DCMAKE_TOOLCHAIN_FILE="$(EMSDK_DIR)/cmake/Modules/Platform/Emscripten.cmake"
 
 third_party/tesseract: third_party_versions.mk
 	mkdir -p third_party/tesseract
@@ -125,9 +110,18 @@ build/tesseract.uptodate: build/leptonica.uptodate third_party/tesseract
 	(cd build/tesseract && $(EMSDK_DIR)/emmake ninja install)
 	touch build/tesseract.uptodate
 
+build/tesseract-fallback.uptodate: build/leptonica.uptodate third_party/tesseract
+	mkdir -p build/tesseract-fallback
+	(cd build/tesseract-fallback && $(EMSDK_DIR)/emcmake cmake -G Ninja ../../third_party/tesseract $(TESSERACT_FALLBACK_FLAGS))
+	(cd build/tesseract-fallback && $(EMSDK_DIR)/emmake ninja)
+	(cd build/tesseract-fallback && $(EMSDK_DIR)/emmake ninja install)
+	touch build/tesseract-fallback.uptodate
+
+
+EXPORTED_FUNCTIONS=$(shell (cat exports.txt | sed 's/^/_/' | paste -sd "," -))
 EMCC_FLAGS =\
 						-Oz\
-						-sEXPORTED_FUNCTIONS=_malloc,_free\
+						-sEXPORTED_FUNCTIONS="_malloc,_free,$(EXPORTED_FUNCTIONS)"\
 						-sSTANDALONE_WASM\
 						-sWARN_ON_UNDEFINED_SYMBOLS=0\
 						--no-entry\
@@ -135,12 +129,12 @@ EMCC_FLAGS =\
 						-sALLOW_MEMORY_GROWTH\
 						-sMAXIMUM_MEMORY=1GB\
 						-std=c++20\
-						-sUSE_ZLIB=1\
-						-sUSE_LIBPNG=1\
-						-s USE_LIBJPEG=1
+						-s USE_ZLIB=1 -s USE_LIBPNG=1 -s USE_LIBJPEG=1\
+						-g
 
 build/tesseract-core.wasm: tessbridge/tessbridge.cpp build/tesseract.uptodate
+	$(EMSDK_DIR)/emcc --version
 	$(EMSDK_DIR)/emcc tessbridge/tessbridge.cpp $(EMCC_FLAGS) \
-		-I$(INSTALL_DIR)/include/ -L$(INSTALL_DIR)/lib/ -ltesseract -lleptonica \
-		 $(shell awk '{print "-Wl,--export="$$0}' exports.txt) -o build/tesseract-core.wasm
+		-I$(INSTALL_DIR)/include/ -L$(INSTALL_DIR)/lib/ -ltesseract -lleptonica\
+		-o build/tesseract-core.wasm
 

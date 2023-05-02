@@ -239,7 +239,7 @@ func (client *Client) init() error {
 		languages = strings.Join(client.Languages, "+")
 	}
 	languagesPtr := getApi().malloc(uint64(len(languages)) + 1)[0]
-	getApi().module.Memory().WriteString(uint32(languagesPtr), languages)
+	getApi().module.Memory().Write(uint32(languagesPtr), append([]byte(languages), 0))
 	defer getApi().free(languagesPtr)
 
 	var tessdataPrefix string
@@ -249,7 +249,7 @@ func (client *Client) init() error {
 	}
 	tessdataPrefixPtr := getApi().malloc(uint64(len(tessdataPrefix) + 1))[0]
 
-	getApi().module.Memory().WriteString(uint32(tessdataPrefixPtr), tessdataPrefix)
+	getApi().module.Memory().Write(uint32(tessdataPrefixPtr), append([]byte(tessdataPrefix), 0))
 	defer getApi().free(tessdataPrefixPtr)
 
 	res := getApi().Init(client.api, tessdataPrefixPtr, languagesPtr, 0, 0)[0]
@@ -288,8 +288,8 @@ func (client *Client) setVariablesToInitializedAPI() error {
 	for key, value := range client.Variables {
 		keyPtr := getApi().malloc(uint64(len(key) + 1))[0]
 		valPtr := getApi().malloc(uint64(len(key) + 1))[0]
-		getApi().module.Memory().WriteString(uint32(keyPtr), string(key))
-		getApi().module.Memory().WriteString(uint32(valPtr), string(value))
+		getApi().module.Memory().Write(uint32(keyPtr), append([]byte(string(key)), 0))
+		getApi().module.Memory().Write(uint32(valPtr), append([]byte(string(value)), 0))
 		defer getApi().free(keyPtr)
 		defer getApi().free(valPtr)
 		res := getApi().SetVariable(client.api, keyPtr, valPtr)[0]

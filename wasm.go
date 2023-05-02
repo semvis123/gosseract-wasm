@@ -35,17 +35,12 @@ func getApi() *tesseractApi {
 
 func newApi() *tesseractApi {
 	ctx := context.WithValue(context.Background(), experimental.FunctionListenerFactoryKey{}, logging.NewLoggingListenerFactory(os.Stdout))
+	ctx = context.Background() // Comment this line to get debug information.
 
 	// Create a new WebAssembly Runtime.
 	r := wazero.NewRuntime(ctx)
 
 	wasi_snapshot_preview1.MustInstantiate(ctx, r)
-	// NewFunctionBuilder().WithFunc(func(_, _ int32) int32 { print("__syscall_getcwd"); return 0 }).Export("__syscall_getcwd").
-	// NewFunctionBuilder().WithFunc(func(_, _, _ int32) int32 { print("__syscall_unlinkat"); return 0 }).Export("__syscall_unlinkat").
-	// NewFunctionBuilder().WithFunc(func(_ int32) int32 { print("__syscall_rmdir"); return 0 }).Export("__syscall_rmdir").
-	// NewFunctionBuilder().WithGoModuleFunction(func(path, stat int32) int32 { syscall.Stat(path, ) }).Export("__syscall_stat64").
-	// NewFunctionBuilder().WithFunc(func(_ int32, _ float64) int32 { print("_setitimer_js"); return 0 }).Export("_setitimer_js")
-
 	compiled, err := r.CompileModule(ctx, binary)
 	if err != nil {
 		log.Panicf("failed to compile module: %v", err)
@@ -56,10 +51,11 @@ func newApi() *tesseractApi {
 	}
 
 	mod, err := r.InstantiateModule(ctx, compiled, wazero.NewModuleConfig().
-		// WithFS(os.DirFS("/")).
+		WithStartFunctions("_initialize").
 		WithFSConfig(wazero.NewFSConfig().WithDirMount("./", "/")).
 		WithStderr(os.Stderr).
 		WithStdout(os.Stdout))
+
 	if err != nil {
 		log.Panicf("failed to instantiate module: %v", err)
 	}
@@ -79,7 +75,7 @@ func newApi() *tesseractApi {
 		SetPageSegMode:           fun(ctx, mod, "SetPageSegMode"),
 		GetPageSegMode:           fun(ctx, mod, "GetPageSegMode"),
 		Utf8Text:                 fun(ctx, mod, "UTF8Text"),
-		HocrText:                 fun(ctx, mod, "HocrText"),
+		HocrText:                 fun(ctx, mod, "HOCRText"),
 		Version:                  fun(ctx, mod, "Version"),
 		GetDataPath:              fun(ctx, mod, "GetDataPath"),
 		CreatePixImageByFilepath: fun(ctx, mod, "CreatePixImageByFilepath"),
