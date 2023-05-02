@@ -27,31 +27,35 @@ third_party/emsdk: third_party_versions.mk
 	cd $@ && git fetch origin $(EMSDK_COMMIT) && git checkout $(EMSDK_COMMIT)
 	touch $@
 
-build/emsdk.uptodate: third_party/emsdk
+build/emsdk.uptodate: third_party/emsdk | build
 	third_party/emsdk/emsdk install latest
 	third_party/emsdk/emsdk activate latest
 	cd third_party/emsdk/upstream/emscripten/ && git remote add myremote $(EMSCRIPTEN_FORK)
 	cd third_party/emsdk/upstream/emscripten/ && git fetch myremote && git checkout -t -f -b mymain --track myremote/$(EMSCRIPTEN_BRANCH)
 	touch build/emsdk.uptodate
 
-third_party/zlib: third_party_versions.mk build/emsdk.uptodate
-	mkdir -p third_party/zlib
-	test -d $@/.git || git clone --depth 1 https://github.com/emscripten-ports/zlib.git $@
-	cd $@ && git fetch origin $(ZLIB_COMMIT) && git checkout $(ZLIB_COMMIT)
-	touch $@
+# third_party/zlib: third_party_versions.mk build/emsdk.uptodate
+# 	mkdir -p third_party/zlib
+# 	test -d $@/.git || git clone --depth 1 https://github.com/emscripten-ports/zlib.git $@
+# 	cd $@ && git fetch origin $(ZLIB_COMMIT) && git checkout $(ZLIB_COMMIT)
+# 	touch $@
+#
+# build/zlib.uptodate: third_party/zlib | build
+# 	mkdir -p build/zlib
+# 	cd build/zlib && $(EMSDK_DIR)/emconfigure ../../third_party/zlib/configure
+# 	# cd build/zlib && $(EMSDK_DIR)/emcmake cmake -G Ninja ../../third_party/zlib -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR)
+# 	cd build/zlib && $(EMSDK_DIR)/emmake make build
+# 	# cd build/zlib && $(EMSDK_DIR)/emmake make install -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR)
+# 	# touch build/zlib.uptodate
 
-build/zlib.uptodate: third_party/zlib | build
-	mkdir -p build/zlib
-	# cd build/zlib && $(EMSDK_DIR)/emconfigure ../../third_party/zlib/configure
-	cd build/zlib && $(EMSDK_DIR)/emcmake cmake -G Ninja ../../third_party/zlib -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR)
-	cd build/zlib && $(EMSDK_DIR)/emmake ninja
-	cd build/zlib && $(EMSDK_DIR)/emmake make install -DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR)
-	# touch build/zlib.uptodate
+LEPTONICA_DEP_FLAGS=-s USE_ZLIB=1 -s USE_LIBPNG=1 -s USE_LIBJPEG=1
+LEPTONICA_FLAGS=-DCMAKE_INSTALL_PREFIX="$(INSTALL_DIR)" \
+	-DCMAKE_TOOLCHAIN_FILE="$(EMSDK_DIR)/cmake/Modules/Platform/Emscripten.cmake" \
+	-DCMAKE_CXX_FLAGS="$(LEPTONICA_DEP_FLAGS)" \
+	-DCMAKE_C_FLAGS="$(LEPTONICA_DEP_FLAGS)" \
+	-DCMAKE_EXE_LINKER_FLAGS=" $(LEPTONICA_DEP_FLAGS)"
 
-LEPTONICA_FLAGS=\ 
--DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR) \
-
-third_party/leptonica: third_party_versions.mk third_party/zlib build/zlib.uptodate
+third_party/leptonica: third_party_versions.mk 
 	mkdir -p third_party/leptonica
 	test -d $@/.git || git clone --depth 1 https://github.com/DanBloomberg/leptonica.git $@
 	cd $@ && git fetch origin $(LEPTONICA_COMMIT) && git checkout $(LEPTONICA_COMMIT)
@@ -136,7 +140,6 @@ EMCC_FLAGS =\
 						-std=c++20\
 
 build/tesseract-core.wasm: tessbridge/tessbridge.cpp build/tesseract.uptodate
-	$(EMSDK_DIR)/emcc --version
 	$(EMSDK_DIR)/emcc tessbridge/tessbridge.cpp $(EMCC_FLAGS) \
 		-I$(INSTALL_DIR)/include/ -L$(INSTALL_DIR)/lib/ -ltesseract -lleptonica\
 		-o build/tesseract-core.wasm $(awk '{print "-Wl,--export="$0}' exports.txt)
