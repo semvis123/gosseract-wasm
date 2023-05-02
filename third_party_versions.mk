@@ -1,5 +1,5 @@
 # v3.1.16
-EMSDK_COMMIT=961e66c5099e1119dda25f7a8945d155fc561c90
+EMSDK_COMMIT=b113f24842c6e97fe3e352084db09a6e278593ae
 EMSCRIPTEN_BRANCH=implement-more-syscalls-for-standalone
 EMSCRIPTEN_FORK=https://github.com/jerbob92/emscripten.git
 
