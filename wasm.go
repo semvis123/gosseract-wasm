@@ -17,7 +17,7 @@ import (
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 )
 
-//go:embed tesseract-core.wasm
+//go:embed build/tesseract-core.wasm
 var binary []byte
 
 var apiInstance *tesseractApi
