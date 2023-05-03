@@ -1,4 +1,4 @@
-module github.com/otiai10/gosseract/v2
+module github.com/semvis123/gosseract-wasm/v2
 
 go 1.18
 

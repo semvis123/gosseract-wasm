@@ -88,6 +88,7 @@ TESSERACT_FLAGS=\
 								-DCMAKE_TOOLCHAIN_FILE="$(EMSDK_DIR)/cmake/Modules/Platform/Emscripten.cmake"
 
 
+
 third_party/tesseract: third_party_versions.mk
 	mkdir -p third_party/tesseract
 	test -d $@/.git || git clone --depth 1 https://github.com/tesseract-ocr/tesseract.git $@
@@ -105,7 +106,6 @@ build/tesseract.uptodate: build/leptonica.uptodate third_party/tesseract
 	(cd build/tesseract && $(EMSDK_DIR)/emmake ninja)
 	(cd build/tesseract && $(EMSDK_DIR)/emmake ninja install)
 	touch build/tesseract.uptodate
-
 
 EXPORTED_FUNCTIONS=$(shell (cat tessbridge/tessbridge.h | sed -nr 's/.* \*?([A-Z][a-zA-Z0-9]*)\(.*\);/\1/p' | sed 's/^/_/' | paste -sd "," -))
 EMCC_FLAGS =\
