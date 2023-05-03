@@ -38,8 +38,8 @@ func main() {
 
 # Installation
 
-1. [tesseract-ocr](https://github.com/tesseract-ocr/tessdoc), including library and headers
-2. `go get -t github.com/otiai10/gosseract/v2`
+~~1. [tesseract-ocr](https://github.com/tesseract-ocr/tessdoc), including library and headers~~.  
+2. `go get -t github.com/semvis123/gosseract-wasm/v2`
 
 Please check this [Dockerfile](https://github.com/semvis123/gosseract-wasm/blob/main/Dockerfile) to get started step-by-step.
 Or if you want the env instantly, you can just try by `docker run -it --rm otiai10/gosseract`.
