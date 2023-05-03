@@ -61,6 +61,7 @@ func newApi() *tesseractApi {
 	}
 	tAPI := tesseractApi{
 		module:                   mod,
+		context:                  ctx,
 		Create:                   fun(ctx, mod, "Create"),
 		Free:                     fun(ctx, mod, "Free"),
 		free:                     fun(ctx, mod, "free"),
@@ -103,7 +104,8 @@ func fun(ctx context.Context, mod api.Module, name string) func(params ...uint64
 }
 
 type tesseractApi struct {
-	module api.Module
+	module  api.Module
+	context context.Context
 	Create,
 	Free,
 	free,
@@ -125,6 +127,10 @@ type tesseractApi struct {
 	CreatePixImageByFilepath,
 	CreatePixImageFromBytes,
 	DestroyPixImage func(params ...uint64) []uint64
+}
+
+func (t *tesseractApi) Close() {
+	t.module.Close(t.context)
 }
 
 func (t *tesseractApi) ReadString(ptr uint64) string {

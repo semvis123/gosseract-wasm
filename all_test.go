@@ -38,7 +38,7 @@ func TestClearPersistentCache(t *testing.T) {
 	client := NewClient()
 	defer client.Close()
 	client.init()
-	ClearPersistentCache()
+	client.ClearPersistentCache()
 }
 
 func TestNewClient(t *testing.T) {

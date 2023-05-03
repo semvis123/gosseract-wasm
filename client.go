@@ -10,21 +10,24 @@ import (
 
 // Version returns the version of Tesseract-OCR
 func Version() string {
-	api := getApi().Create()
-	defer getApi().Free(api...)
-	version := getApi().Version(api...)
-	return getApi().ReadString(version[0])
+	wasm := newApi()
+	defer wasm.Close()
+	api := wasm.Create()
+	defer wasm.Free(api...)
+	versionPtr := wasm.Version(api...)
+	return wasm.ReadString(versionPtr[0])
 }
 
 // ClearPersistentCache clears any library-level memory caches. There are a variety of expensive-to-load constant data structures (mostly language dictionaries) that are cached globally – surviving the Init() and End() of individual TessBaseAPI's. This function allows the clearing of these caches.
-func ClearPersistentCache() {
-	api := getApi().Create()[0]
-	defer getApi().Free(api)
-	getApi().ClearPersistentCache(api)
+func (client *Client) ClearPersistentCache() {
+	client.wasm.ClearPersistentCache(client.api)
 }
 
 // Client is argument builder for tesseract::TessBaseAPI.
 type Client struct {
+	// the tesseract wasm binding.
+	wasm *tesseractApi
+
 	api uint64
 	// Holds a reference to the pix image to be able to destroy on client close
 	// or when a new image is set
@@ -59,8 +62,10 @@ type Client struct {
 
 // NewClient construct new Client. It's due to caller to Close this client.
 func NewClient() *Client {
+	wasm := newApi()
 	client := &Client{
-		api:        getApi().Create()[0],
+		wasm:       wasm,
+		api:        wasm.Create()[0],
 		Variables:  map[SettableVariable]string{},
 		Trim:       true,
 		shouldInit: true,
@@ -76,19 +81,20 @@ func (client *Client) Close() (err error) {
 	// 		err = fmt.Errorf("%v", e)
 	// 	}
 	// }()
-	getApi().Clear(client.api)
-	getApi().Free(client.api)
+	client.wasm.Clear(client.api)
+	client.wasm.Free(client.api)
 	if client.pixImage != 0 {
-		getApi().DestroyPixImage(client.pixImage)
+		client.wasm.DestroyPixImage(client.pixImage)
 		client.pixImage = 0
 	}
+	client.wasm.Close()
 	return err
 }
 
 // Version provides the version of Tesseract used by this client.
 func (client *Client) Version() string {
-	version := getApi().Version(client.api)[0]
-	return getApi().ReadString(version)
+	version := client.wasm.Version(client.api)[0]
+	return client.wasm.ReadString(version)
 }
 
 // SetImage sets path to image file to be processed OCR.
@@ -107,15 +113,15 @@ func (client *Client) SetImage(imagepath string) error {
 	imagepath, _ = filepath.Abs(imagepath)
 
 	if client.pixImage != 0 {
-		getApi().DestroyPixImage(client.pixImage)
+		client.wasm.DestroyPixImage(client.pixImage)
 		client.pixImage = 0
 	}
 
-	imagepathPtr := getApi().malloc(uint64(len(imagepath) + 1))[0]
-	defer getApi().free(imagepathPtr)
-	getApi().module.Memory().Write(uint32(imagepathPtr), append([]byte(imagepath), 0))
+	imagepathPtr := client.wasm.malloc(uint64(len(imagepath) + 1))[0]
+	defer client.wasm.free(imagepathPtr)
+	client.wasm.module.Memory().Write(uint32(imagepathPtr), append([]byte(imagepath), 0))
 
-	img := getApi().CreatePixImageByFilepath(imagepathPtr)[0]
+	img := client.wasm.CreatePixImageByFilepath(imagepathPtr)[0]
 	client.pixImage = img
 
 	return nil
@@ -132,14 +138,14 @@ func (client *Client) SetImageFromBytes(data []byte) error {
 	}
 
 	if client.pixImage != 0 {
-		getApi().DestroyPixImage(client.pixImage)
+		client.wasm.DestroyPixImage(client.pixImage)
 		client.pixImage = 0
 	}
 
-	imagePtr := getApi().malloc(uint64(len(data)))[0]
-	getApi().module.Memory().Write(uint32(imagePtr), data)
+	imagePtr := client.wasm.malloc(uint64(len(data)))[0]
+	client.wasm.module.Memory().Write(uint32(imagePtr), data)
 
-	img := getApi().CreatePixImageFromBytes(imagePtr, uint64(len(data)))[0]
+	img := client.wasm.CreatePixImageFromBytes(imagePtr, uint64(len(data)))[0]
 	client.pixImage = img
 
 	return nil
@@ -203,7 +209,7 @@ func (client *Client) SetVariable(key SettableVariable, value string) error {
 // See official documentation for PSM here https://tesseract-ocr.github.io/tessdoc/ImproveQuality#page-segmentation-method
 // See https://github.com/otiai10/gosseract/issues/52 for more information.
 func (client *Client) SetPageSegMode(mode PageSegMode) error {
-	getApi().SetPageSegMode(client.api, uint64(mode))
+	client.wasm.SetPageSegMode(client.api, uint64(mode))
 	return nil
 }
 
@@ -241,7 +247,7 @@ func (client *Client) SetTessdataPrefix(prefix string) error {
 func (client *Client) init() error {
 
 	if !client.shouldInit {
-		getApi().SetPixImage(client.api, client.pixImage)
+		client.wasm.SetPixImage(client.api, client.pixImage)
 		return nil
 	}
 
@@ -249,15 +255,15 @@ func (client *Client) init() error {
 	if len(client.Languages) != 0 {
 		languages = strings.Join(client.Languages, "+")
 	}
-	languagesPtr := getApi().malloc(uint64(len(languages)) + 1)[0]
-	getApi().module.Memory().Write(uint32(languagesPtr), append([]byte(languages), 0))
-	defer getApi().free(languagesPtr)
+	languagesPtr := client.wasm.malloc(uint64(len(languages)) + 1)[0]
+	client.wasm.module.Memory().Write(uint32(languagesPtr), append([]byte(languages), 0))
+	defer client.wasm.free(languagesPtr)
 
 	var configFilePtr uint64
 	if client.ConfigFilePath != "" {
-		configFilePtr = getApi().malloc(uint64(len(client.ConfigFilePath) + 1))[0]
+		configFilePtr = client.wasm.malloc(uint64(len(client.ConfigFilePath) + 1))[0]
 		println(client.ConfigFilePath)
-		getApi().module.Memory().Write(uint32(configFilePtr), append([]byte(client.ConfigFilePath), 0))
+		client.wasm.module.Memory().Write(uint32(configFilePtr), append([]byte(client.ConfigFilePath), 0))
 	}
 
 	var tessdataPrefix string
@@ -266,12 +272,12 @@ func (client *Client) init() error {
 	} else {
 		tessdataPrefix, _ = filepath.Abs("./")
 	}
-	tessdataPrefixPtr := getApi().malloc(uint64(len(tessdataPrefix) + 1))[0]
+	tessdataPrefixPtr := client.wasm.malloc(uint64(len(tessdataPrefix) + 1))[0]
 
-	getApi().module.Memory().Write(uint32(tessdataPrefixPtr), append([]byte(tessdataPrefix), 0))
-	defer getApi().free(tessdataPrefixPtr)
+	client.wasm.module.Memory().Write(uint32(tessdataPrefixPtr), append([]byte(tessdataPrefix), 0))
+	defer client.wasm.free(tessdataPrefixPtr)
 
-	res := getApi().Init(client.api, tessdataPrefixPtr, languagesPtr, configFilePtr, 0)[0]
+	res := client.wasm.Init(client.api, tessdataPrefixPtr, languagesPtr, configFilePtr, 0)[0]
 
 	if res != 0 {
 		return fmt.Errorf("failed to initialize TessBaseAPI with code %d", -1)
@@ -285,7 +291,7 @@ func (client *Client) init() error {
 		return fmt.Errorf("PixImage is not set, use SetImage or SetImageFromBytes before Text or HOCRText")
 	}
 
-	getApi().SetPixImage(client.api, client.pixImage)
+	client.wasm.SetPixImage(client.api, client.pixImage)
 
 	client.shouldInit = false
 
@@ -305,13 +311,13 @@ func (client *Client) flagForInit() {
 // See https://zdenop.github.io/tesseract-doc/classtesseract_1_1_tess_base_a_p_i.html#a2e09259c558c6d8e0f7e523cbaf5adf5
 func (client *Client) setVariablesToInitializedAPI() error {
 	for key, value := range client.Variables {
-		keyPtr := getApi().malloc(uint64(len(key) + 1))[0]
-		valPtr := getApi().malloc(uint64(len(key) + 1))[0]
-		getApi().module.Memory().Write(uint32(keyPtr), append([]byte(string(key)), 0))
-		getApi().module.Memory().Write(uint32(valPtr), append([]byte(string(value)), 0))
-		defer getApi().free(keyPtr)
-		defer getApi().free(valPtr)
-		res := getApi().SetVariable(client.api, keyPtr, valPtr)[0]
+		keyPtr := client.wasm.malloc(uint64(len(key) + 1))[0]
+		valPtr := client.wasm.malloc(uint64(len(key) + 1))[0]
+		client.wasm.module.Memory().Write(uint32(keyPtr), append([]byte(string(key)), 0))
+		client.wasm.module.Memory().Write(uint32(valPtr), append([]byte(string(value)), 0))
+		defer client.wasm.free(keyPtr)
+		defer client.wasm.free(valPtr)
+		res := client.wasm.SetVariable(client.api, keyPtr, valPtr)[0]
 		if res == 0 {
 			return fmt.Errorf("failed to set variable with key(%v) and value(%v)", key, value)
 		}
@@ -336,8 +342,8 @@ func (client *Client) Text() (out string, err error) {
 	if err = client.init(); err != nil {
 		return
 	}
-	resultPtr := getApi().Utf8Text(client.api)[0]
-	out = getApi().ReadString(resultPtr)
+	resultPtr := client.wasm.Utf8Text(client.api)[0]
+	out = client.wasm.ReadString(resultPtr)
 	if client.Trim {
 		out = strings.Trim(out, "\n")
 	}
@@ -350,7 +356,9 @@ func (client *Client) HOCRText() (out string, err error) {
 	if err = client.init(); err != nil {
 		return
 	}
-	out = getApi().ReadString(getApi().HocrText(client.api)[0])
+	textPtr := client.wasm.HocrText(client.api)[0]
+	defer client.wasm.free(textPtr)
+	out = client.wasm.ReadString(textPtr)
 	return
 }
 
@@ -370,19 +378,19 @@ func (client *Client) GetBoundingBoxes(level PageIteratorLevel) (out []BoundingB
 	if err = client.init(); err != nil {
 		return
 	}
-	boundingBoxesPtr := getApi().GetBoundingBoxes(client.api, uint64(level))[0]
-	defer getApi().free(boundingBoxesPtr)
-	length, _ := getApi().module.Memory().ReadUint32Le(uint32(boundingBoxesPtr))
-	boxArrayPtr, _ := getApi().module.Memory().ReadUint64Le(uint32(boundingBoxesPtr) + 4)
-	defer getApi().free(boxArrayPtr)
+	boundingBoxesPtr := client.wasm.GetBoundingBoxes(client.api, uint64(level))[0]
+	defer client.wasm.free(boundingBoxesPtr)
+	length, _ := client.wasm.module.Memory().ReadUint32Le(uint32(boundingBoxesPtr))
+	boxArrayPtr, _ := client.wasm.module.Memory().ReadUint64Le(uint32(boundingBoxesPtr) + 4)
+	defer client.wasm.free(boxArrayPtr)
 
 	readInt := func(base uint64, offset int) int {
-		x, _ := getApi().module.Memory().ReadUint32Le(uint32(base) + uint32(offset))
+		x, _ := client.wasm.module.Memory().ReadUint32Le(uint32(base) + uint32(offset))
 		return int(x)
 	}
 
 	readFloat64 := func(base uint64, offset int) float64 {
-		x, _ := getApi().module.Memory().ReadFloat64Le(uint32(base) + uint32(offset))
+		x, _ := client.wasm.module.Memory().ReadFloat64Le(uint32(base) + uint32(offset))
 		return x
 	}
 
@@ -393,8 +401,8 @@ func (client *Client) GetBoundingBoxes(level PageIteratorLevel) (out []BoundingB
 		y1 := readInt(boxArrayPtr, 48*i+4)
 		x2 := readInt(boxArrayPtr, 48*i+8)
 		y2 := readInt(boxArrayPtr, 48*i+12)
-		wordPtr, _ := getApi().module.Memory().ReadUint32Le(uint32(boxArrayPtr) + uint32(48*i+16))
-		word := getApi().ReadString(uint64(wordPtr))
+		wordPtr, _ := client.wasm.module.Memory().ReadUint32Le(uint32(boxArrayPtr) + uint32(48*i+16))
+		word := client.wasm.ReadString(uint64(wordPtr))
 		confidence := readFloat64(boxArrayPtr, 48*i+24)
 		out = append(out, BoundingBox{
 			Box:        image.Rect(x1, y1, x2, y2),
@@ -429,19 +437,19 @@ func (client *Client) GetBoundingBoxesVerbose() (out []BoundingBox, err error) {
 	if err = client.init(); err != nil {
 		return
 	}
-	boundingBoxesPtr := getApi().GetBoundingBoxesVerbose(client.api)[0]
-	defer getApi().free(boundingBoxesPtr)
-	length, _ := getApi().module.Memory().ReadUint32Le(uint32(boundingBoxesPtr))
-	boxArrayPtr, _ := getApi().module.Memory().ReadUint64Le(uint32(boundingBoxesPtr) + 4)
-	defer getApi().free(boxArrayPtr)
+	boundingBoxesPtr := client.wasm.GetBoundingBoxesVerbose(client.api)[0]
+	defer client.wasm.free(boundingBoxesPtr)
+	length, _ := client.wasm.module.Memory().ReadUint32Le(uint32(boundingBoxesPtr))
+	boxArrayPtr, _ := client.wasm.module.Memory().ReadUint64Le(uint32(boundingBoxesPtr) + 4)
+	defer client.wasm.free(boxArrayPtr)
 
 	readInt := func(base uint64, offset int) int {
-		x, _ := getApi().module.Memory().ReadUint32Le(uint32(base) + uint32(offset))
+		x, _ := client.wasm.module.Memory().ReadUint32Le(uint32(base) + uint32(offset))
 		return int(x)
 	}
 
 	readFloat64 := func(base uint64, offset int) float64 {
-		x, _ := getApi().module.Memory().ReadFloat64Le(uint32(base) + uint32(offset))
+		x, _ := client.wasm.module.Memory().ReadFloat64Le(uint32(base) + uint32(offset))
 		return x
 	}
 
@@ -452,8 +460,8 @@ func (client *Client) GetBoundingBoxesVerbose() (out []BoundingBox, err error) {
 		y1 := readInt(boxArrayPtr, 48*i+4)
 		x2 := readInt(boxArrayPtr, 48*i+8)
 		y2 := readInt(boxArrayPtr, 48*i+12)
-		wordPtr, _ := getApi().module.Memory().ReadUint32Le(uint32(boxArrayPtr) + uint32(48*i+16))
-		word := getApi().ReadString(uint64(wordPtr))
+		wordPtr, _ := client.wasm.module.Memory().ReadUint32Le(uint32(boxArrayPtr) + uint32(48*i+16))
+		word := client.wasm.ReadString(uint64(wordPtr))
 		confidence := readFloat64(boxArrayPtr, 48*i+24)
 		blockNum := readInt(boxArrayPtr, 48*i+32)
 		parNum := readInt(boxArrayPtr, 48*i+36)
@@ -477,5 +485,8 @@ func (client *Client) GetBoundingBoxesVerbose() (out []BoundingBox, err error) {
 // getDataPath is useful hepler to determine where current tesseract
 // installation stores trained models
 func getDataPath() string {
-	return getApi().ReadString(getApi().GetDataPath()[0])
+	wasm := newApi()
+	dataPath := wasm.ReadString(wasm.GetDataPath()[0])
+	wasm.Close()
+	return dataPath
 }
