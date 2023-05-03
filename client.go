@@ -1,40 +1,37 @@
 package gosseract
 
-// #include <stdlib.h>
-// #include <stdbool.h>
-// #include "tessbridge.h"
-import "C"
 import (
 	"fmt"
 	"image"
 	"os"
 	"path/filepath"
 	"strings"
-	"unsafe"
 )
 
 // Version returns the version of Tesseract-OCR
 func Version() string {
-	api := C.Create()
-	defer C.Free(api)
-	version := C.Version(api)
-	return C.GoString(version)
+	wasm := newApi()
+	defer wasm.Close()
+	api := wasm.Create()
+	defer wasm.Free(api...)
+	versionPtr := wasm.Version(api...)
+	return wasm.ReadString(versionPtr[0])
 }
 
 // ClearPersistentCache clears any library-level memory caches. There are a variety of expensive-to-load constant data structures (mostly language dictionaries) that are cached globally – surviving the Init() and End() of individual TessBaseAPI's. This function allows the clearing of these caches.
-func ClearPersistentCache() {
-	api := C.Create()
-	defer C.Free(api)
-	C.ClearPersistentCache(api)
+func (client *Client) ClearPersistentCache() {
+	client.wasm.ClearPersistentCache(client.api)
 }
 
 // Client is argument builder for tesseract::TessBaseAPI.
 type Client struct {
-	api C.TessBaseAPI
+	// the tesseract wasm binding.
+	wasm *tesseractApi
 
+	api uint64
 	// Holds a reference to the pix image to be able to destroy on client close
 	// or when a new image is set
-	pixImage C.PixImage
+	pixImage uint64
 
 	// Trim specifies characters to trim, which would be trimed from result string.
 	// As results of OCR, text often contains unnecessary characters, such as newlines, on the head/foot of string.
@@ -65,8 +62,10 @@ type Client struct {
 
 // NewClient construct new Client. It's due to caller to Close this client.
 func NewClient() *Client {
+	wasm := newApi()
 	client := &Client{
-		api:        C.Create(),
+		wasm:       wasm,
+		api:        wasm.Create()[0],
 		Variables:  map[SettableVariable]string{},
 		Trim:       true,
 		shouldInit: true,
@@ -82,25 +81,26 @@ func (client *Client) Close() (err error) {
 	// 		err = fmt.Errorf("%v", e)
 	// 	}
 	// }()
-	C.Clear(client.api)
-	C.Free(client.api)
-	if client.pixImage != nil {
-		C.DestroyPixImage(client.pixImage)
-		client.pixImage = nil
+	client.wasm.Clear(client.api)
+	client.wasm.Free(client.api)
+	if client.pixImage != 0 {
+		client.wasm.DestroyPixImage(client.pixImage)
+		client.pixImage = 0
 	}
+	client.wasm.Close()
 	return err
 }
 
 // Version provides the version of Tesseract used by this client.
 func (client *Client) Version() string {
-	version := C.Version(client.api)
-	return C.GoString(version)
+	version := client.wasm.Version(client.api)[0]
+	return client.wasm.ReadString(version)
 }
 
 // SetImage sets path to image file to be processed OCR.
 func (client *Client) SetImage(imagepath string) error {
 
-	if client.api == nil {
+	if client.api == 0 {
 		return fmt.Errorf("TessBaseAPI is not constructed, please use `gosseract.NewClient`")
 	}
 	if imagepath == "" {
@@ -110,15 +110,18 @@ func (client *Client) SetImage(imagepath string) error {
 		return fmt.Errorf("cannot detect the stat of specified file: %v", err)
 	}
 
-	if client.pixImage != nil {
-		C.DestroyPixImage(client.pixImage)
-		client.pixImage = nil
+	imagepath, _ = filepath.Abs(imagepath)
+
+	if client.pixImage != 0 {
+		client.wasm.DestroyPixImage(client.pixImage)
+		client.pixImage = 0
 	}
 
-	p := C.CString(imagepath)
-	defer C.free(unsafe.Pointer(p))
+	imagepathPtr := client.wasm.malloc(uint64(len(imagepath) + 1))[0]
+	defer client.wasm.free(imagepathPtr)
+	client.wasm.module.Memory().Write(uint32(imagepathPtr), append([]byte(imagepath), 0))
 
-	img := C.CreatePixImageByFilePath(p)
+	img := client.wasm.CreatePixImageByFilepath(imagepathPtr)[0]
 	client.pixImage = img
 
 	return nil
@@ -127,19 +130,22 @@ func (client *Client) SetImage(imagepath string) error {
 // SetImageFromBytes sets the image data to be processed OCR.
 func (client *Client) SetImageFromBytes(data []byte) error {
 
-	if client.api == nil {
+	if client.api == 0 {
 		return fmt.Errorf("TessBaseAPI is not constructed, please use `gosseract.NewClient`")
 	}
 	if len(data) == 0 {
 		return fmt.Errorf("image data cannot be empty")
 	}
 
-	if client.pixImage != nil {
-		C.DestroyPixImage(client.pixImage)
-		client.pixImage = nil
+	if client.pixImage != 0 {
+		client.wasm.DestroyPixImage(client.pixImage)
+		client.pixImage = 0
 	}
 
-	img := C.CreatePixImageFromBytes((*C.uchar)(unsafe.Pointer(&data[0])), C.int(len(data)))
+	imagePtr := client.wasm.malloc(uint64(len(data)))[0]
+	client.wasm.module.Memory().Write(uint32(imagePtr), data)
+
+	img := client.wasm.CreatePixImageFromBytes(imagePtr, uint64(len(data)))[0]
 	client.pixImage = img
 
 	return nil
@@ -203,7 +209,7 @@ func (client *Client) SetVariable(key SettableVariable, value string) error {
 // See official documentation for PSM here https://tesseract-ocr.github.io/tessdoc/ImproveQuality#page-segmentation-method
 // See https://github.com/otiai10/gosseract/issues/52 for more information.
 func (client *Client) SetPageSegMode(mode PageSegMode) error {
-	C.SetPageSegMode(client.api, C.int(mode))
+	client.wasm.SetPageSegMode(client.api, uint64(mode))
 	return nil
 }
 
@@ -216,7 +222,10 @@ func (client *Client) SetConfigFile(fpath string) error {
 	if info.IsDir() {
 		return fmt.Errorf("the specified config file path seems to be a directory")
 	}
-	client.ConfigFilePath = fpath
+	client.ConfigFilePath, err = filepath.Abs(fpath)
+	if err != nil {
+		return err
+	}
 
 	client.flagForInit()
 
@@ -229,7 +238,7 @@ func (client *Client) SetTessdataPrefix(prefix string) error {
 	if prefix == "" {
 		return fmt.Errorf("tessdata prefix could not be empty")
 	}
-	client.TessdataPrefix = prefix
+	client.TessdataPrefix, _ = filepath.Abs(prefix)
 	client.flagForInit()
 	return nil
 }
@@ -238,45 +247,51 @@ func (client *Client) SetTessdataPrefix(prefix string) error {
 func (client *Client) init() error {
 
 	if !client.shouldInit {
-		C.SetPixImage(client.api, client.pixImage)
+		client.wasm.SetPixImage(client.api, client.pixImage)
 		return nil
 	}
 
-	var languages *C.char
+	var languages string
 	if len(client.Languages) != 0 {
-		languages = C.CString(strings.Join(client.Languages, "+"))
+		languages = strings.Join(client.Languages, "+")
 	}
-	defer C.free(unsafe.Pointer(languages))
+	languagesPtr := client.wasm.malloc(uint64(len(languages)) + 1)[0]
+	client.wasm.module.Memory().Write(uint32(languagesPtr), append([]byte(languages), 0))
+	defer client.wasm.free(languagesPtr)
 
-	var configfile *C.char
-	if _, err := os.Stat(client.ConfigFilePath); err == nil {
-		configfile = C.CString(client.ConfigFilePath)
+	var configFilePtr uint64
+	if client.ConfigFilePath != "" {
+		configFilePtr = client.wasm.malloc(uint64(len(client.ConfigFilePath) + 1))[0]
+		println(client.ConfigFilePath)
+		client.wasm.module.Memory().Write(uint32(configFilePtr), append([]byte(client.ConfigFilePath), 0))
 	}
-	defer C.free(unsafe.Pointer(configfile))
 
-	var tessdataPrefix *C.char
+	var tessdataPrefix string
 	if client.TessdataPrefix != "" {
-		tessdataPrefix = C.CString(client.TessdataPrefix)
+		tessdataPrefix = client.TessdataPrefix
+	} else {
+		tessdataPrefix, _ = filepath.Abs("./")
 	}
-	defer C.free(unsafe.Pointer(tessdataPrefix))
+	tessdataPrefixPtr := client.wasm.malloc(uint64(len(tessdataPrefix) + 1))[0]
 
-	errbuf := [512]C.char{}
-	res := C.Init(client.api, tessdataPrefix, languages, configfile, &errbuf[0])
-	msg := C.GoString(&errbuf[0])
+	client.wasm.module.Memory().Write(uint32(tessdataPrefixPtr), append([]byte(tessdataPrefix), 0))
+	defer client.wasm.free(tessdataPrefixPtr)
+
+	res := client.wasm.Init(client.api, tessdataPrefixPtr, languagesPtr, configFilePtr, 0)[0]
 
 	if res != 0 {
-		return fmt.Errorf("failed to initialize TessBaseAPI with code %d: %s", res, msg)
+		return fmt.Errorf("failed to initialize TessBaseAPI with code %d", -1)
 	}
 
 	if err := client.setVariablesToInitializedAPI(); err != nil {
 		return err
 	}
 
-	if client.pixImage == nil {
+	if client.pixImage == 0 {
 		return fmt.Errorf("PixImage is not set, use SetImage or SetImageFromBytes before Text or HOCRText")
 	}
 
-	C.SetPixImage(client.api, client.pixImage)
+	client.wasm.SetPixImage(client.api, client.pixImage)
 
 	client.shouldInit = false
 
@@ -296,11 +311,14 @@ func (client *Client) flagForInit() {
 // See https://zdenop.github.io/tesseract-doc/classtesseract_1_1_tess_base_a_p_i.html#a2e09259c558c6d8e0f7e523cbaf5adf5
 func (client *Client) setVariablesToInitializedAPI() error {
 	for key, value := range client.Variables {
-		k, v := C.CString(string(key)), C.CString(value)
-		defer C.free(unsafe.Pointer(k))
-		defer C.free(unsafe.Pointer(v))
-		res := C.SetVariable(client.api, k, v)
-		if !bool(res) {
+		keyPtr := client.wasm.malloc(uint64(len(key) + 1))[0]
+		valPtr := client.wasm.malloc(uint64(len(key) + 1))[0]
+		client.wasm.module.Memory().Write(uint32(keyPtr), append([]byte(string(key)), 0))
+		client.wasm.module.Memory().Write(uint32(valPtr), append([]byte(string(value)), 0))
+		defer client.wasm.free(keyPtr)
+		defer client.wasm.free(valPtr)
+		res := client.wasm.SetVariable(client.api, keyPtr, valPtr)[0]
+		if res == 0 {
 			return fmt.Errorf("failed to set variable with key(%v) and value(%v)", key, value)
 		}
 	}
@@ -324,7 +342,8 @@ func (client *Client) Text() (out string, err error) {
 	if err = client.init(); err != nil {
 		return
 	}
-	out = C.GoString(C.UTF8Text(client.api))
+	resultPtr := client.wasm.Utf8Text(client.api)[0]
+	out = client.wasm.ReadString(resultPtr)
 	if client.Trim {
 		out = strings.Trim(out, "\n")
 	}
@@ -337,7 +356,9 @@ func (client *Client) HOCRText() (out string, err error) {
 	if err = client.init(); err != nil {
 		return
 	}
-	out = C.GoString(C.HOCRText(client.api))
+	textPtr := client.wasm.HocrText(client.api)[0]
+	defer client.wasm.free(textPtr)
+	out = client.wasm.ReadString(textPtr)
 	return
 }
 
@@ -351,24 +372,42 @@ type BoundingBox struct {
 
 // GetBoundingBoxes returns bounding boxes for each matched word
 func (client *Client) GetBoundingBoxes(level PageIteratorLevel) (out []BoundingBox, err error) {
-	if client.api == nil {
+	if client.api == 0 {
 		return out, fmt.Errorf("TessBaseAPI is not constructed, please use `gosseract.NewClient`")
 	}
 	if err = client.init(); err != nil {
 		return
 	}
-	boxArray := C.GetBoundingBoxes(client.api, C.int(level))
-	length := int(boxArray.length)
-	defer C.free(unsafe.Pointer(boxArray.boxes))
-	defer C.free(unsafe.Pointer(boxArray))
+	boundingBoxesPtr := client.wasm.GetBoundingBoxes(client.api, uint64(level))[0]
+	defer client.wasm.free(boundingBoxesPtr)
+	length, _ := client.wasm.module.Memory().ReadUint32Le(uint32(boundingBoxesPtr))
+	boxArrayPtr, _ := client.wasm.module.Memory().ReadUint64Le(uint32(boundingBoxesPtr) + 4)
+	defer client.wasm.free(boxArrayPtr)
+
+	readInt := func(base uint64, offset int) int {
+		x, _ := client.wasm.module.Memory().ReadUint32Le(uint32(base) + uint32(offset))
+		return int(x)
+	}
+
+	readFloat64 := func(base uint64, offset int) float64 {
+		x, _ := client.wasm.module.Memory().ReadFloat64Le(uint32(base) + uint32(offset))
+		return x
+	}
+
 	out = make([]BoundingBox, 0, length)
-	for i := 0; i < length; i++ {
-		// cast to bounding_box: boxes + i*sizeof(box)
-		box := (*C.struct_bounding_box)(unsafe.Pointer(uintptr(unsafe.Pointer(boxArray.boxes)) + uintptr(i)*unsafe.Sizeof(C.struct_bounding_box{})))
+
+	for i := 0; i < int(length); i++ {
+		x1 := readInt(boxArrayPtr, 48*i)
+		y1 := readInt(boxArrayPtr, 48*i+4)
+		x2 := readInt(boxArrayPtr, 48*i+8)
+		y2 := readInt(boxArrayPtr, 48*i+12)
+		wordPtr, _ := client.wasm.module.Memory().ReadUint32Le(uint32(boxArrayPtr) + uint32(48*i+16))
+		word := client.wasm.ReadString(uint64(wordPtr))
+		confidence := readFloat64(boxArrayPtr, 48*i+24)
 		out = append(out, BoundingBox{
-			Box:        image.Rect(int(box.x1), int(box.y1), int(box.x2), int(box.y2)),
-			Word:       C.GoString(box.word),
-			Confidence: float64(box.confidence),
+			Box:        image.Rect(x1, y1, x2, y2),
+			Word:       word,
+			Confidence: confidence,
 		})
 	}
 
@@ -392,35 +431,62 @@ func GetAvailableLanguages() ([]string, error) {
 // GetBoundingBoxesVerbose returns bounding boxes at word level with block_num, par_num, line_num and word_num
 // according to the c++ api that returns a formatted TSV output. Reference: `TessBaseAPI::GetTSVText`.
 func (client *Client) GetBoundingBoxesVerbose() (out []BoundingBox, err error) {
-	if client.api == nil {
+	if client.api == 0 {
 		return out, fmt.Errorf("TessBaseAPI is not constructed, please use `gosseract.NewClient`")
 	}
 	if err = client.init(); err != nil {
 		return
 	}
-	boxArray := C.GetBoundingBoxesVerbose(client.api)
-	length := int(boxArray.length)
-	defer C.free(unsafe.Pointer(boxArray.boxes))
-	defer C.free(unsafe.Pointer(boxArray))
+	boundingBoxesPtr := client.wasm.GetBoundingBoxesVerbose(client.api)[0]
+	defer client.wasm.free(boundingBoxesPtr)
+	length, _ := client.wasm.module.Memory().ReadUint32Le(uint32(boundingBoxesPtr))
+	boxArrayPtr, _ := client.wasm.module.Memory().ReadUint64Le(uint32(boundingBoxesPtr) + 4)
+	defer client.wasm.free(boxArrayPtr)
+
+	readInt := func(base uint64, offset int) int {
+		x, _ := client.wasm.module.Memory().ReadUint32Le(uint32(base) + uint32(offset))
+		return int(x)
+	}
+
+	readFloat64 := func(base uint64, offset int) float64 {
+		x, _ := client.wasm.module.Memory().ReadFloat64Le(uint32(base) + uint32(offset))
+		return x
+	}
+
 	out = make([]BoundingBox, 0, length)
-	for i := 0; i < length; i++ {
-		// cast to bounding_box: boxes + i*sizeof(box)
-		box := (*C.struct_bounding_box)(unsafe.Pointer(uintptr(unsafe.Pointer(boxArray.boxes)) + uintptr(i)*unsafe.Sizeof(C.struct_bounding_box{})))
+
+	for i := 0; i < int(length); i++ {
+		x1 := readInt(boxArrayPtr, 48*i)
+		y1 := readInt(boxArrayPtr, 48*i+4)
+		x2 := readInt(boxArrayPtr, 48*i+8)
+		y2 := readInt(boxArrayPtr, 48*i+12)
+		wordPtr, _ := client.wasm.module.Memory().ReadUint32Le(uint32(boxArrayPtr) + uint32(48*i+16))
+		word := client.wasm.ReadString(uint64(wordPtr))
+		confidence := readFloat64(boxArrayPtr, 48*i+24)
+		blockNum := readInt(boxArrayPtr, 48*i+32)
+		parNum := readInt(boxArrayPtr, 48*i+36)
+		lineNum := readInt(boxArrayPtr, 48*i+40)
+		wordNum := readInt(boxArrayPtr, 48*i+44)
+
 		out = append(out, BoundingBox{
-			Box:        image.Rect(int(box.x1), int(box.y1), int(box.x2), int(box.y2)),
-			Word:       C.GoString(box.word),
-			Confidence: float64(box.confidence),
-			BlockNum:   int(box.block_num),
-			ParNum:     int(box.par_num),
-			LineNum:    int(box.line_num),
-			WordNum:    int(box.word_num),
+			Box:        image.Rect(x1, y1, x2, y2),
+			Word:       word,
+			Confidence: confidence,
+			BlockNum:   blockNum,
+			ParNum:     parNum,
+			LineNum:    lineNum,
+			WordNum:    wordNum,
 		})
 	}
+
 	return
 }
 
 // getDataPath is useful hepler to determine where current tesseract
 // installation stores trained models
 func getDataPath() string {
-	return C.GoString(C.GetDataPath())
+	wasm := newApi()
+	dataPath := wasm.ReadString(wasm.GetDataPath()[0])
+	wasm.Close()
+	return dataPath
 }

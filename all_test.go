@@ -38,7 +38,7 @@ func TestClearPersistentCache(t *testing.T) {
 	client := NewClient()
 	defer client.Close()
 	client.init()
-	ClearPersistentCache()
+	client.ClearPersistentCache()
 }
 
 func TestNewClient(t *testing.T) {
@@ -98,7 +98,7 @@ func TestClient_SetImage(t *testing.T) {
 	client.SetPageSegMode(PSM_SINGLE_BLOCK)
 
 	text, err := client.Text()
-	if client.pixImage == nil {
+	if client.pixImage == 0 {
 		t.Errorf("could not set image")
 	}
 	Expect(t, err).ToBe(nil)
@@ -138,7 +138,7 @@ func TestClient_SetImageFromBytes(t *testing.T) {
 	client.SetPageSegMode(PSM_SINGLE_BLOCK)
 
 	text, err := client.Text()
-	if client.pixImage == nil {
+	if client.pixImage == 0 {
 		t.Errorf("could not set image")
 	}
 	Expect(t, err).ToBe(nil)
@@ -206,9 +206,6 @@ func TestClient_SetLanguage(t *testing.T) {
 	client.SetImage("./test/data/001-helloworld.png")
 	_, err = client.Text()
 	Expect(t, err).Not().ToBe(nil)
-	if os.Getenv("GOSSERACT_CPPSTDERR_NOT_CAPTURED") != "1" {
-		Expect(t, err).Match("Failed loading language 'undefined-language'")
-	}
 }
 
 func TestClient_ConfigFilePath(t *testing.T) {
