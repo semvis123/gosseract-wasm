@@ -28,11 +28,14 @@ third_party/emsdk: third_party_versions.mk
 	touch $@
 
 build/emsdk.uptodate: third_party/emsdk
-	third_party/emsdk/emsdk install 3.1.35
-	third_party/emsdk/emsdk activate 3.1.35
+	third_party/emsdk/emsdk install 3.1.37
+	third_party/emsdk/emsdk activate 3.1.37
 	rm -Rf third_party/emsdk/upstream/emscripten
 	git clone $(EMSCRIPTEN_FORK) third_party/emsdk/upstream/emscripten
 	cd third_party/emsdk/upstream/emscripten/ && git checkout $(EMSCRIPTEN_BRANCH)
+	$(EMSDK_DIR)/embuilder build zlib
+	$(EMSDK_DIR)/embuilder build libpng
+	$(EMSDK_DIR)/embuilder build libjpeg
 	touch build/emsdk.uptodate
 
 LEPTONICA_DEP_FLAGS=-s USE_ZLIB=1 -s USE_LIBPNG=1 -s USE_LIBJPEG=1
