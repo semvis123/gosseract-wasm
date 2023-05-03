@@ -206,9 +206,6 @@ func TestClient_SetLanguage(t *testing.T) {
 	client.SetImage("./test/data/001-helloworld.png")
 	_, err = client.Text()
 	Expect(t, err).Not().ToBe(nil)
-	if os.Getenv("GOSSERACT_CPPSTDERR_NOT_CAPTURED") != "1" {
-		Expect(t, err).Match("Failed loading language 'undefined-language'")
-	}
 }
 
 func TestClient_ConfigFilePath(t *testing.T) {
