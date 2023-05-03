@@ -3,7 +3,6 @@ package gosseract
 import (
 	"fmt"
 	"image"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -94,23 +93,32 @@ func (client *Client) Version() string {
 
 // SetImage sets path to image file to be processed OCR.
 func (client *Client) SetImage(imagepath string) error {
+
+	if client.api == 0 {
+		return fmt.Errorf("TessBaseAPI is not constructed, please use `gosseract.NewClient`")
+	}
+	if imagepath == "" {
+		return fmt.Errorf("image path cannot be empty")
+	}
 	if _, err := os.Stat(imagepath); err != nil {
 		return fmt.Errorf("cannot detect the stat of specified file: %v", err)
 	}
 
-	file, err := os.Open(imagepath)
-	if err != nil {
-		return fmt.Errorf("could not open file")
+	imagepath, _ = filepath.Abs(imagepath)
+
+	if client.pixImage != 0 {
+		getApi().DestroyPixImage(client.pixImage)
+		client.pixImage = 0
 	}
 
-	defer file.Close()
+	imagepathPtr := getApi().malloc(uint64(len(imagepath) + 1))[0]
+	defer getApi().free(imagepathPtr)
+	getApi().module.Memory().Write(uint32(imagepathPtr), append([]byte(imagepath), 0))
 
-	b, err := io.ReadAll(io.LimitReader(file, 1073741824))
-	if err != nil {
-		return fmt.Errorf("could not read file")
-	}
+	img := getApi().CreatePixImageByFilepath(imagepathPtr)[0]
+	client.pixImage = img
 
-	return client.SetImageFromBytes(b)
+	return nil
 }
 
 // SetImageFromBytes sets the image data to be processed OCR.
@@ -208,7 +216,10 @@ func (client *Client) SetConfigFile(fpath string) error {
 	if info.IsDir() {
 		return fmt.Errorf("the specified config file path seems to be a directory")
 	}
-	client.ConfigFilePath = fpath
+	client.ConfigFilePath, err = filepath.Abs(fpath)
+	if err != nil {
+		return err
+	}
 
 	client.flagForInit()
 
@@ -221,7 +232,7 @@ func (client *Client) SetTessdataPrefix(prefix string) error {
 	if prefix == "" {
 		return fmt.Errorf("tessdata prefix could not be empty")
 	}
-	client.TessdataPrefix = prefix
+	client.TessdataPrefix, _ = filepath.Abs(prefix)
 	client.flagForInit()
 	return nil
 }
@@ -242,20 +253,28 @@ func (client *Client) init() error {
 	getApi().module.Memory().Write(uint32(languagesPtr), append([]byte(languages), 0))
 	defer getApi().free(languagesPtr)
 
+	var configFilePtr uint64
+	if client.ConfigFilePath != "" {
+		configFilePtr = getApi().malloc(uint64(len(client.ConfigFilePath) + 1))[0]
+		println(client.ConfigFilePath)
+		getApi().module.Memory().Write(uint32(configFilePtr), append([]byte(client.ConfigFilePath), 0))
+	}
+
 	var tessdataPrefix string
 	if client.TessdataPrefix != "" {
 		tessdataPrefix = client.TessdataPrefix
-		print("language file :", tessdataPrefix)
+	} else {
+		tessdataPrefix, _ = filepath.Abs("./")
 	}
 	tessdataPrefixPtr := getApi().malloc(uint64(len(tessdataPrefix) + 1))[0]
 
 	getApi().module.Memory().Write(uint32(tessdataPrefixPtr), append([]byte(tessdataPrefix), 0))
 	defer getApi().free(tessdataPrefixPtr)
 
-	res := getApi().Init(client.api, tessdataPrefixPtr, languagesPtr, 0, 0)[0]
+	res := getApi().Init(client.api, tessdataPrefixPtr, languagesPtr, configFilePtr, 0)[0]
 
 	if res != 0 {
-		return fmt.Errorf("failed to initialize TessBaseAPI with code %d", res)
+		return fmt.Errorf("failed to initialize TessBaseAPI with code %d", -1)
 	}
 
 	if err := client.setVariablesToInitializedAPI(); err != nil {
@@ -344,30 +363,48 @@ type BoundingBox struct {
 }
 
 // GetBoundingBoxes returns bounding boxes for each matched word
-// func (client *Client) GetBoundingBoxes(level PageIteratorLevel) (out []BoundingBox, err error) {
-// 	if client.api == 0 {
-// 		return out, fmt.Errorf("TessBaseAPI is not constructed, please use `gosseract.NewClient`")
-// 	}
-// 	if err = client.init(); err != nil {
-// 		return
-// 	}
-// 	boxArray := getApi().GetBoundingBoxes(client.api, uint64(level))
-// 	length := int(boxArray.length)
-// 	defer C.free(unsafe.Pointer(boxArray.boxes))
-// 	defer C.free(unsafe.Pointer(boxArray))
-// 	out = make([]BoundingBox, 0, length)
-// 	for i := 0; i < length; i++ {
-// 		// cast to bounding_box: boxes + i*sizeof(box)
-// 		box := (*C.struct_bounding_box)(unsafe.Pointer(uintptr(unsafe.Pointer(boxArray.boxes)) + uintptr(i)*unsafe.Sizeof(C.struct_bounding_box{})))
-// 		out = append(out, BoundingBox{
-// 			Box:        image.Rect(int(box.x1), int(box.y1), int(box.x2), int(box.y2)),
-// 			Word:       C.GoString(box.word),
-// 			Confidence: float64(box.confidence),
-// 		})
-// 	}
-//
-// 	return
-// }
+func (client *Client) GetBoundingBoxes(level PageIteratorLevel) (out []BoundingBox, err error) {
+	if client.api == 0 {
+		return out, fmt.Errorf("TessBaseAPI is not constructed, please use `gosseract.NewClient`")
+	}
+	if err = client.init(); err != nil {
+		return
+	}
+	boundingBoxesPtr := getApi().GetBoundingBoxes(client.api, uint64(level))[0]
+	defer getApi().free(boundingBoxesPtr)
+	length, _ := getApi().module.Memory().ReadUint32Le(uint32(boundingBoxesPtr))
+	boxArrayPtr, _ := getApi().module.Memory().ReadUint64Le(uint32(boundingBoxesPtr) + 4)
+	defer getApi().free(boxArrayPtr)
+
+	readInt := func(base uint64, offset int) int {
+		x, _ := getApi().module.Memory().ReadUint32Le(uint32(base) + uint32(offset))
+		return int(x)
+	}
+
+	readFloat64 := func(base uint64, offset int) float64 {
+		x, _ := getApi().module.Memory().ReadFloat64Le(uint32(base) + uint32(offset))
+		return x
+	}
+
+	out = make([]BoundingBox, 0, length)
+
+	for i := 0; i < int(length); i++ {
+		x1 := readInt(boxArrayPtr, 48*i)
+		y1 := readInt(boxArrayPtr, 48*i+4)
+		x2 := readInt(boxArrayPtr, 48*i+8)
+		y2 := readInt(boxArrayPtr, 48*i+12)
+		wordPtr, _ := getApi().module.Memory().ReadUint64Le(uint32(boxArrayPtr) + uint32(48*i+16))
+		word := getApi().ReadString(wordPtr)
+		confidence := readFloat64(boxArrayPtr, 48*i+24)
+		out = append(out, BoundingBox{
+			Box:        image.Rect(x1, y1, x2, y2),
+			Word:       word,
+			Confidence: confidence,
+		})
+	}
+
+	return
+}
 
 // GetAvailableLanguages returns a list of available languages in the default tesspath
 func GetAvailableLanguages() ([]string, error) {
@@ -385,33 +422,57 @@ func GetAvailableLanguages() ([]string, error) {
 
 // GetBoundingBoxesVerbose returns bounding boxes at word level with block_num, par_num, line_num and word_num
 // according to the c++ api that returns a formatted TSV output. Reference: `TessBaseAPI::GetTSVText`.
-// func (client *Client) GetBoundingBoxesVerbose() (out []BoundingBox, err error) {
-// 	if client.api == 0 {
-// 		return out, fmt.Errorf("TessBaseAPI is not constructed, please use `gosseract.NewClient`")
-// 	}
-// 	if err = client.init(); err != nil {
-// 		return
-// 	}
-// 	boxArray := getApi().GetBoundingBoxesVerbose(client.api)
-// 	length := int(boxArray.length)
-// 	defer C.free(unsafe.Pointer(boxArray.boxes))
-// 	defer C.free(unsafe.Pointer(boxArray))
-// 	out = make([]BoundingBox, 0, length)
-// 	for i := 0; i < length; i++ {
-// 		// cast to bounding_box: boxes + i*sizeof(box)
-// 		box := (*C.struct_bounding_box)(unsafe.Pointer(uintptr(unsafe.Pointer(boxArray.boxes)) + uintptr(i)*unsafe.Sizeof(C.struct_bounding_box{})))
-// 		out = append(out, BoundingBox{
-// 			Box:        image.Rect(int(box.x1), int(box.y1), int(box.x2), int(box.y2)),
-// 			Word:       C.GoString(box.word),
-// 			Confidence: float64(box.confidence),
-// 			BlockNum:   int(box.block_num),
-// 			ParNum:     int(box.par_num),
-// 			LineNum:    int(box.line_num),
-// 			WordNum:    int(box.word_num),
-// 		})
-// 	}
-// 	return
-// }
+func (client *Client) GetBoundingBoxesVerbose() (out []BoundingBox, err error) {
+	if client.api == 0 {
+		return out, fmt.Errorf("TessBaseAPI is not constructed, please use `gosseract.NewClient`")
+	}
+	if err = client.init(); err != nil {
+		return
+	}
+	boundingBoxesPtr := getApi().GetBoundingBoxesVerbose(client.api)[0]
+	defer getApi().free(boundingBoxesPtr)
+	length, _ := getApi().module.Memory().ReadUint32Le(uint32(boundingBoxesPtr))
+	boxArrayPtr, _ := getApi().module.Memory().ReadUint64Le(uint32(boundingBoxesPtr) + 4)
+	defer getApi().free(boxArrayPtr)
+
+	readInt := func(base uint64, offset int) int {
+		x, _ := getApi().module.Memory().ReadUint32Le(uint32(base) + uint32(offset))
+		return int(x)
+	}
+
+	readFloat64 := func(base uint64, offset int) float64 {
+		x, _ := getApi().module.Memory().ReadFloat64Le(uint32(base) + uint32(offset))
+		return x
+	}
+
+	out = make([]BoundingBox, 0, length)
+
+	for i := 0; i < int(length); i++ {
+		x1 := readInt(boxArrayPtr, 48*i)
+		y1 := readInt(boxArrayPtr, 48*i+4)
+		x2 := readInt(boxArrayPtr, 48*i+8)
+		y2 := readInt(boxArrayPtr, 48*i+12)
+		wordPtr, _ := getApi().module.Memory().ReadUint64Le(uint32(boxArrayPtr) + uint32(48*i+16))
+		word := getApi().ReadString(wordPtr)
+		confidence := readFloat64(boxArrayPtr, 48*i+24)
+		blockNum := readInt(boxArrayPtr, 48*i+32)
+		parNum := readInt(boxArrayPtr, 48*i+36)
+		lineNum := readInt(boxArrayPtr, 48*i+40)
+		wordNum := readInt(boxArrayPtr, 48*i+44)
+
+		out = append(out, BoundingBox{
+			Box:        image.Rect(x1, y1, x2, y2),
+			Word:       word,
+			Confidence: confidence,
+			BlockNum:   blockNum,
+			ParNum:     parNum,
+			LineNum:    lineNum,
+			WordNum:    wordNum,
+		})
+	}
+
+	return
+}
 
 // getDataPath is useful hepler to determine where current tesseract
 // installation stores trained models

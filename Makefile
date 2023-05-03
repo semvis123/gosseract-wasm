@@ -118,7 +118,7 @@ build/tesseract-fallback.uptodate: build/leptonica.uptodate third_party/tesserac
 	touch build/tesseract-fallback.uptodate
 
 
-EXPORTED_FUNCTIONS=$(shell (cat exports.txt | sed 's/^/_/' | paste -sd "," -))
+EXPORTED_FUNCTIONS=$(shell (cat tessbridge/tessbridge.h | sed -nr 's/.* \*?([A-Z][a-zA-Z0-9]*)\(.*\);/\1/p' | sed 's/^/_/' | paste -sd "," -))
 EMCC_FLAGS =\
 						-Oz\
 						-sEXPORTED_FUNCTIONS="_malloc,_free,$(EXPORTED_FUNCTIONS)"\

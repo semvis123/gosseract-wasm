@@ -44,10 +44,15 @@ int Init(TessBaseAPI a, char *tessdataprefix, char *languages) {
 int Init(TessBaseAPI a, char *tessdataprefix, char *languages,
          char *configfilepath, char *errbuf) {
   tesseract::TessBaseAPI *api = (tesseract::TessBaseAPI *)a;
-
   int ret;
-
-  ret = api->Init(tessdataprefix, languages);
+  if (configfilepath != NULL) {
+    char *configs[] = {configfilepath};
+    int configs_size = 1;
+    ret = api->Init(tessdataprefix, languages, tesseract::OEM_DEFAULT, configs,
+                    configs_size, NULL, NULL, false);
+  } else {
+    ret = api->Init(tessdataprefix, languages);
+  }
   return ret;
 }
 

@@ -52,7 +52,7 @@ func newApi() *tesseractApi {
 
 	mod, err := r.InstantiateModule(ctx, compiled, wazero.NewModuleConfig().
 		WithStartFunctions("_initialize").
-		WithFSConfig(wazero.NewFSConfig().WithDirMount("./", "/")).
+		WithFSConfig(wazero.NewFSConfig().WithDirMount("/", "/")).
 		WithStderr(os.Stderr).
 		WithStdout(os.Stdout))
 
@@ -78,7 +78,7 @@ func newApi() *tesseractApi {
 		HocrText:                 fun(ctx, mod, "HOCRText"),
 		Version:                  fun(ctx, mod, "Version"),
 		GetDataPath:              fun(ctx, mod, "GetDataPath"),
-		CreatePixImageByFilepath: fun(ctx, mod, "CreatePixImageByFilepath"),
+		CreatePixImageByFilepath: fun(ctx, mod, "CreatePixImageByFilePath"),
 		CreatePixImageFromBytes:  fun(ctx, mod, "CreatePixImageFromBytes"),
 		DestroyPixImage:          fun(ctx, mod, "DestroyPixImage"),
 		FileExists:               fun(ctx, mod, "FileExists"),
