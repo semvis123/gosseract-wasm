@@ -87,13 +87,6 @@ TESSERACT_FLAGS=\
 								-DCMAKE_INSTALL_PREFIX=$(INSTALL_DIR) \
 								-DCMAKE_TOOLCHAIN_FILE="$(EMSDK_DIR)/cmake/Modules/Platform/Emscripten.cmake"
 
-# Compile flags for fallback Tesseract build. This is for browsers that don't
-# support WASM SIMD.
-TESSERACT_FALLBACK_FLAGS=$(TESSERACT_FLAGS) \
-												 -DHAVE_SSE4_1=OFF \
-												 -DCMAKE_INSTALL_PREFIX=$(FALLBACK_INSTALL_DIR) \
-												 -DCMAKE_CXX_FLAGS=$(TESSERACT_DEFINES) -s USE_ZLIB=1 -s USE_LIBPNG=1 -s USE_LIBJPEG=1 \
-												 -DCMAKE_TOOLCHAIN_FILE="$(EMSDK_DIR)/cmake/Modules/Platform/Emscripten.cmake"
 
 third_party/tesseract: third_party_versions.mk
 	mkdir -p third_party/tesseract
@@ -112,13 +105,6 @@ build/tesseract.uptodate: build/leptonica.uptodate third_party/tesseract
 	(cd build/tesseract && $(EMSDK_DIR)/emmake ninja)
 	(cd build/tesseract && $(EMSDK_DIR)/emmake ninja install)
 	touch build/tesseract.uptodate
-
-build/tesseract-fallback.uptodate: build/leptonica.uptodate third_party/tesseract
-	mkdir -p build/tesseract-fallback
-	(cd build/tesseract-fallback && $(EMSDK_DIR)/emcmake cmake -G Ninja ../../third_party/tesseract $(TESSERACT_FALLBACK_FLAGS))
-	(cd build/tesseract-fallback && $(EMSDK_DIR)/emmake ninja)
-	(cd build/tesseract-fallback && $(EMSDK_DIR)/emmake ninja install)
-	touch build/tesseract-fallback.uptodate
 
 
 EXPORTED_FUNCTIONS=$(shell (cat tessbridge/tessbridge.h | sed -nr 's/.* \*?([A-Z][a-zA-Z0-9]*)\(.*\);/\1/p' | sed 's/^/_/' | paste -sd "," -))
