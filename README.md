@@ -23,7 +23,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/otiai10/gosseract/v2"
+	"github.com/semvis123/gosseract-wasm/v2"
 )
 
 func main() {
