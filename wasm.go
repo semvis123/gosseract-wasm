@@ -128,8 +128,8 @@ type tesseractApi struct {
 }
 
 func (t *tesseractApi) ReadString(ptr uint64) string {
-	if ptr == 0 {
-		panic("nil pointer")
+	if ptr == 0 || ptr == 0xffffffff {
+		return ""
 	}
 	mem := t.module.Memory()
 	buf, ok := mem.Read(uint32(ptr), math.MaxUint32)
@@ -140,7 +140,7 @@ func (t *tesseractApi) ReadString(ptr uint64) string {
 		}
 	}
 	if i := bytes.IndexByte(buf, 0); i < 0 {
-		panic("")
+		panic("string is not null terminated")
 	} else {
 		return string(buf[:i])
 	}

@@ -393,8 +393,8 @@ func (client *Client) GetBoundingBoxes(level PageIteratorLevel) (out []BoundingB
 		y1 := readInt(boxArrayPtr, 48*i+4)
 		x2 := readInt(boxArrayPtr, 48*i+8)
 		y2 := readInt(boxArrayPtr, 48*i+12)
-		wordPtr, _ := getApi().module.Memory().ReadUint64Le(uint32(boxArrayPtr) + uint32(48*i+16))
-		word := getApi().ReadString(wordPtr)
+		wordPtr, _ := getApi().module.Memory().ReadUint32Le(uint32(boxArrayPtr) + uint32(48*i+16))
+		word := getApi().ReadString(uint64(wordPtr))
 		confidence := readFloat64(boxArrayPtr, 48*i+24)
 		out = append(out, BoundingBox{
 			Box:        image.Rect(x1, y1, x2, y2),
@@ -452,8 +452,8 @@ func (client *Client) GetBoundingBoxesVerbose() (out []BoundingBox, err error) {
 		y1 := readInt(boxArrayPtr, 48*i+4)
 		x2 := readInt(boxArrayPtr, 48*i+8)
 		y2 := readInt(boxArrayPtr, 48*i+12)
-		wordPtr, _ := getApi().module.Memory().ReadUint64Le(uint32(boxArrayPtr) + uint32(48*i+16))
-		word := getApi().ReadString(wordPtr)
+		wordPtr, _ := getApi().module.Memory().ReadUint32Le(uint32(boxArrayPtr) + uint32(48*i+16))
+		word := getApi().ReadString(uint64(wordPtr))
 		confidence := readFloat64(boxArrayPtr, 48*i+24)
 		blockNum := readInt(boxArrayPtr, 48*i+32)
 		parNum := readInt(boxArrayPtr, 48*i+36)
