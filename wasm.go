@@ -3,6 +3,7 @@ package gosseract
 import (
 	"bytes"
 	"context"
+	"embed"
 	_ "embed"
 	"log"
 	"math"
@@ -19,6 +20,9 @@ import (
 
 //go:embed build/tesseract-core.wasm
 var binary []byte
+
+//go:embed eng.traineddata
+var languages embed.FS
 
 var apiInstance *tesseractApi
 var lock = &sync.Mutex{}
@@ -52,7 +56,7 @@ func newApi() *tesseractApi {
 
 	mod, err := r.InstantiateModule(ctx, compiled, wazero.NewModuleConfig().
 		WithStartFunctions("_initialize").
-		WithFSConfig(wazero.NewFSConfig().WithDirMount("/", "/")).
+		WithFSConfig(wazero.NewFSConfig().WithDirMount("/", "/").WithFSMount(languages, "/tessdata/")).
 		WithStderr(os.Stderr).
 		WithStdout(os.Stdout))
 

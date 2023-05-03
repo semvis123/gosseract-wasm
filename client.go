@@ -270,7 +270,7 @@ func (client *Client) init() error {
 	if client.TessdataPrefix != "" {
 		tessdataPrefix = client.TessdataPrefix
 	} else {
-		tessdataPrefix, _ = filepath.Abs("./")
+		tessdataPrefix = "/tessdata/"
 	}
 	tessdataPrefixPtr := client.wasm.malloc(uint64(len(tessdataPrefix) + 1))[0]
 
