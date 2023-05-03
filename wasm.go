@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"io/fs"
 	"log"
 	"math"
 	"os"
@@ -37,6 +38,10 @@ func getApi() *tesseractApi {
 }
 
 func newApi() *tesseractApi {
+	return newApiWithFS(nil)
+}
+
+func newApiWithFS(fs fs.FS) *tesseractApi {
 	ctx := context.WithValue(context.Background(), experimental.FunctionListenerFactoryKey{}, logging.NewLoggingListenerFactory(os.Stdout))
 	ctx = context.Background() // Comment this line to get debug information.
 
@@ -55,7 +60,7 @@ func newApi() *tesseractApi {
 
 	mod, err := r.InstantiateModule(ctx, compiled, wazero.NewModuleConfig().
 		WithStartFunctions("_initialize").
-		WithFSConfig(wazero.NewFSConfig().WithDirMount("/", "/").WithFSMount(languages, "/tessdata/")).
+		WithFSConfig(wazero.NewFSConfig().WithDirMount("/", "/").WithFSMount(languages, "/tessdata/").WithFSMount(fs, "/custom/")).
 		WithStderr(os.Stderr).
 		WithStdout(os.Stdout))
 
