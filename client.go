@@ -3,6 +3,7 @@ package gosseract
 import (
 	"fmt"
 	"image"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,6 +64,20 @@ type Client struct {
 // NewClient construct new Client. It's due to caller to Close this client.
 func NewClient() *Client {
 	wasm := newApi()
+	client := &Client{
+		wasm:       wasm,
+		api:        wasm.Create()[0],
+		Variables:  map[SettableVariable]string{},
+		Trim:       true,
+		shouldInit: true,
+		Languages:  []string{"eng"},
+	}
+	return client
+}
+
+// NewClient construct new Client. It's due to caller to Close this client.
+func NewClientWithFS(fs fs.FS) *Client {
+	wasm := newApiWithFS(fs)
 	client := &Client{
 		wasm:       wasm,
 		api:        wasm.Create()[0],
@@ -241,6 +256,9 @@ func (client *Client) SetTessdataPrefix(prefix string) error {
 	client.TessdataPrefix, _ = filepath.Abs(prefix)
 	client.flagForInit()
 	return nil
+}
+
+func (client *Client) setTessdataPrefixWithFS(prefix string, fs fs.FS) {
 }
 
 // Initialize tesseract::TessBaseAPI
