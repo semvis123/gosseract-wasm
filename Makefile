@@ -109,7 +109,7 @@ build/tesseract.uptodate: build/leptonica.uptodate third_party/tesseract
 
 EXPORTED_FUNCTIONS=$(shell (cat tessbridge/tessbridge.h | sed -nr 's/.* \*?([A-Z][a-zA-Z0-9]*)\(.*\);/\1/p' | sed 's/^/_/' | paste -sd "," -))
 EMCC_FLAGS =\
-						-Oz\
+						-O3\
 						-sEXPORTED_FUNCTIONS="_malloc,_free,$(EXPORTED_FUNCTIONS)"\
 						-sSTANDALONE_WASM\
 						-sWARN_ON_UNDEFINED_SYMBOLS=0\
@@ -118,8 +118,7 @@ EMCC_FLAGS =\
 						-sALLOW_MEMORY_GROWTH\
 						-sMAXIMUM_MEMORY=1GB\
 						-std=c++20\
-						-s USE_ZLIB=1 -s USE_LIBPNG=1 -s USE_LIBJPEG=1\
-						-g
+						-s USE_ZLIB=1 -s USE_LIBPNG=1 -s USE_LIBJPEG=1
 
 build/tesseract-core.wasm: tessbridge/tessbridge.cpp build/tesseract.uptodate
 	$(EMSDK_DIR)/emcc --version
