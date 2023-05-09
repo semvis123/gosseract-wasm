@@ -76,7 +76,9 @@ func NewClient() *Client {
 	return client
 }
 
-// NewClient construct new Client. It's due to caller to Close this client.
+// NewClient construct new Client with a FS that will be mounted at '/custom/'.
+// The file system can be used to provide (embedded) traineddata or other files to tesseract.
+// It's due to caller to Close this client.
 func NewClientWithFS(fs fs.FS) *Client {
 	wasm := newApiWithFS(fs)
 	client := &Client{
