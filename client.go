@@ -13,10 +13,11 @@ import (
 func Version() string {
 	wasm := newApi()
 	defer wasm.Close()
-	api := wasm.Create()
-	defer wasm.Free(api...)
-	versionPtr := wasm.Version(api...)
-	return wasm.ReadString(versionPtr[0])
+	api := wasm.Create()[0]
+	defer wasm.Free(api)
+	versionPtr := wasm.Version(api)[0]
+	defer wasm.free(versionPtr)
+	return wasm.ReadString(versionPtr)
 }
 
 // ClearPersistentCache clears any library-level memory caches. There are a variety of expensive-to-load constant data structures (mostly language dictionaries) that are cached globally – surviving the Init() and End() of individual TessBaseAPI's. This function allows the clearing of these caches.
@@ -108,8 +109,9 @@ func (client *Client) Close() (err error) {
 
 // Version provides the version of Tesseract used by this client.
 func (client *Client) Version() string {
-	version := client.wasm.Version(client.api)[0]
-	return client.wasm.ReadString(version)
+	versionPtr := client.wasm.Version(client.api)[0]
+	defer client.wasm.free(versionPtr)
+	return client.wasm.ReadString(versionPtr)
 }
 
 // SetImage sets path to image file to be processed OCR.
@@ -158,6 +160,7 @@ func (client *Client) SetImageFromBytes(data []byte) error {
 	}
 
 	imagePtr := client.wasm.malloc(uint64(len(data)))[0]
+	defer client.wasm.free(imagePtr)
 	client.wasm.module.Memory().Write(uint32(imagePtr), data)
 
 	img := client.wasm.CreatePixImageFromBytes(imagePtr, uint64(len(data)))[0]
@@ -361,6 +364,7 @@ func (client *Client) Text() (out string, err error) {
 		return
 	}
 	resultPtr := client.wasm.Utf8Text(client.api)[0]
+	defer client.wasm.free(resultPtr)
 	out = client.wasm.ReadString(resultPtr)
 	if client.Trim {
 		out = strings.Trim(out, "\n")
@@ -504,7 +508,9 @@ func (client *Client) GetBoundingBoxesVerbose() (out []BoundingBox, err error) {
 // installation stores trained models
 func getDataPath() string {
 	wasm := newApi()
-	dataPath := wasm.ReadString(wasm.GetDataPath()[0])
-	wasm.Close()
+	defer wasm.Close()
+	dataPathPtr := wasm.GetDataPath()[0]
+	dataPath := wasm.ReadString(dataPathPtr)
+	defer wasm.free(dataPathPtr)
 	return dataPath
 }
