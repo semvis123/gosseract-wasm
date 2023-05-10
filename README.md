@@ -41,25 +41,27 @@ func main() {
 ~~1. [tesseract-ocr](https://github.com/tesseract-ocr/tessdoc), including library and headers~~.  
 2. `go get -t github.com/semvis123/gosseract-wasm/v2`
 
-Please check this [Dockerfile](https://github.com/semvis123/gosseract-wasm/blob/main/Dockerfile) to get started step-by-step.
-Or if you want the env instantly, you can just try by `docker run -it --rm otiai10/gosseract`.
+~~Please check this [Dockerfile](https://github.com/semvis123/gosseract-wasm/blob/main/Dockerfile) to get started step-by-step.
+Or if you want the env instantly, you can just try by `docker run -it --rm otiai10/gosseract`.~~
 
 # Test
 
-In case you have [tesseract-ocr](https://github.com/tesseract-ocr/tessdoc) on your local, you can just hit
+~~In case you have [tesseract-ocr](https://github.com/tesseract-ocr/tessdoc) on your local,~~
+
+you can just hit
 
 ```
 % go test .
 ```
 
-Otherwise, if you **DON'T** want to install tesseract-ocr on your local, kick `./test/runtime` which is using Docker and Vagrant to test the source code on some runtimes.
+~~Otherwise, if you **DON'T** want to install tesseract-ocr on your local, kick `./test/runtime` which is using Docker and Vagrant to test the source code on some runtimes.
 
 ```
 % ./test/runtime --driver docker
 % ./test/runtime --driver vagrant
 ```
-
-Check [./test/runtimes](https://github.com/semvis123/gosseract-wasm/tree/main/test/runtimes) for more information about runtime tests.
+~~
+~~Check [./test/runtimes](https://github.com/semvis123/gosseract-wasm/tree/main/test/runtimes) for more information about runtime tests.~~
 
 # Issues
 
