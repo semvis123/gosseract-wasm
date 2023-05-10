@@ -54,13 +54,12 @@ you can just hit
 % go test .
 ```
 
-~~Otherwise, if you **DON'T** want to install tesseract-ocr on your local, kick `./test/runtime` which is using Docker and Vagrant to test the source code on some runtimes.
+~~Otherwise, if you **DON'T** want to install tesseract-ocr on your local, kick `./test/runtime` which is using Docker and Vagrant to test the source code on some runtimes.~~~
 
 ```
 % ./test/runtime --driver docker
 % ./test/runtime --driver vagrant
 ```
-~~
 ~~Check [./test/runtimes](https://github.com/semvis123/gosseract-wasm/tree/main/test/runtimes) for more information about runtime tests.~~
 
 # Issues
