@@ -7,6 +7,16 @@ import (
 	"testing"
 )
 
+func BenchmarkClient_New(b *testing.B) {
+	client := NewClient()
+	client.Close()
+
+	for i := 0; i < b.N; i++ {
+		client := NewClient()
+		client.Close()
+	}
+}
+
 func BenchmarkClient_Text(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		client := NewClient()

@@ -106,6 +106,7 @@ func (client *Client) Close() (err error) {
 		client.pixImage = 0
 	}
 	client.wasm.Close()
+	client.wasm.module.Close(client.wasm.context)
 	return err
 }
 

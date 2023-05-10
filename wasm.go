@@ -34,10 +34,10 @@ func newApi() *tesseractApi {
 }
 
 func newApiWithFS(fs fs.FS) *tesseractApi {
-	if r == nil {
-		func() {
-			initLock.Lock()
-			defer initLock.Unlock()
+	func() {
+		initLock.Lock()
+		defer initLock.Unlock()
+		if r == nil {
 			ctx = context.WithValue(context.Background(), experimental.FunctionListenerFactoryKey{}, logging.NewLoggingListenerFactory(os.Stdout))
 			ctx = context.Background() // Comment this line to get debug information.
 
@@ -58,8 +58,8 @@ func newApiWithFS(fs fs.FS) *tesseractApi {
 				log.Panicf("failed to instantiate module (emscripten): %v", err)
 			}
 
-		}()
-	}
+		}
+	}()
 
 	mod, err := r.InstantiateModule(ctx, *compiledModule, wazero.NewModuleConfig().
 		WithStartFunctions("_initialize").
