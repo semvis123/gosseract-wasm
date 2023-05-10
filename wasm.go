@@ -21,7 +21,8 @@ import (
 //go:embed build/tesseract-core.wasm
 var binary []byte
 
-var compiledModule *wazero.CompiledModule
+var compiledModule wazero.CompiledModule
+var runtimeConfig wazero.RuntimeConfig
 var r wazero.Runtime
 var ctx context.Context
 var initLock = &sync.Mutex{}
@@ -41,19 +42,24 @@ func newApiWithFS(fs fs.FS) *tesseractApi {
 			ctx = context.WithValue(context.Background(), experimental.FunctionListenerFactoryKey{}, logging.NewLoggingListenerFactory(os.Stdout))
 			ctx = context.Background() // Comment this line to get debug information.
 
+			if runtimeConfig == nil {
+				cache := wazero.NewCompilationCache()
+				runtimeConfig = wazero.NewRuntimeConfig().WithCompilationCache(cache)
+			}
+
 			// Create a new WebAssembly Runtime.
-			r = wazero.NewRuntime(ctx)
+			r = wazero.NewRuntimeWithConfig(ctx, runtimeConfig)
 
 			wasi_snapshot_preview1.MustInstantiate(ctx, r)
 
 			if compiledModule == nil {
 				module, err := r.CompileModule(ctx, binary)
-				compiledModule = &module
+				compiledModule = module
 				if err != nil {
 					log.Panicf("failed to compile module: %v", err)
 				}
 			}
-			_, err := emscripten.InstantiateForModule(ctx, r, *compiledModule)
+			_, err := emscripten.InstantiateForModule(ctx, r, compiledModule)
 			if err != nil {
 				log.Panicf("failed to instantiate module (emscripten): %v", err)
 			}
@@ -61,7 +67,7 @@ func newApiWithFS(fs fs.FS) *tesseractApi {
 		}
 	}()
 
-	mod, err := r.InstantiateModule(ctx, *compiledModule, wazero.NewModuleConfig().
+	mod, err := r.InstantiateModule(ctx, compiledModule, wazero.NewModuleConfig().
 		WithStartFunctions("_initialize").
 		WithFSConfig(wazero.NewFSConfig().WithDirMount("/", "/").WithFSMount(languages, "/tessdata/").WithFSMount(fs, "/custom/")).
 		WithStderr(os.Stderr).
