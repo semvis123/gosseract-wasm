@@ -69,9 +69,11 @@ func newApiWithFS(fs fs.FS) *tesseractApi {
 
 	mod, err := r.InstantiateModule(ctx, compiledModule, wazero.NewModuleConfig().
 		WithStartFunctions("_initialize").
-		WithFSConfig(wazero.NewFSConfig().WithDirMount("/", "/").WithFSMount(languages, "/tessdata/").WithFSMount(fs, "/custom/")).
-		WithStderr(os.Stderr).
-		WithStdout(os.Stdout))
+		WithFSConfig(
+			wazero.NewFSConfig().
+				WithDirMount("/", "/").
+				WithFSMount(languages, "/tessdata/").
+				WithFSMount(fs, "/custom/")))
 
 	if err != nil {
 		log.Panicf("failed to instantiate module: %v", err)
