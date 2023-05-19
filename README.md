@@ -64,4 +64,4 @@ you can just hit
 
 # Issues
 
-- [https://github.com/otiai10/gosseract/issues](https://github.com/semvis123/gosseract-wasm/issues?utf8=%E2%9C%93&q=is%3Aissue)
+- [https://github.com/semvis123/gosseract-wasm/issues](https://github.com/semvis123/gosseract-wasm/issues?utf8=%E2%9C%93&q=is%3Aissue)
